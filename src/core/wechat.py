@@ -19,9 +19,6 @@ class WeChatController:
         self.shell = Dispatch("WScript.Shell")  # 创建 Shell 对象
         self.debug_mode = False  # 添加调试模式标志
         self.is_running = True  # 初始状态设为 True
-        self.is_vip = False  # 添加VIP标志
-        self.max_free_groups = 2  # 免费版最多分析的群聊数
-        self.max_free_display = 2  # 免费版最多显示的重复成员数
         
         # 设置缓存文件路径
         self.cache_dir = os.path.join(os.path.expanduser("~"), "wechat_tool_cache")

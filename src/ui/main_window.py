@@ -19,8 +19,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 import keyboard
 from src.core.wechat import WeChatController
-from src.core.license import LicenseManager
-from src.ui.register_dialog import RegisterDialog
 import pandas as pd
 from datetime import datetime
 import os
@@ -235,22 +233,12 @@ class MainWindow(QMainWindow):
             else:
                 logging.warning(f"图标文件不存在: {icon_path}")
             
-            # 检查注册状态
-            logging.info("开始检查注册状态...")
-            self.license_manager = LicenseManager()
-            self.is_registered, self.is_vip, self.is_permanent, self.expire_time = self.license_manager.is_registered()
-            logging.info(f"注册状态: {'已注册' if self.is_registered else '未注册'}, "
-                        f"VIP状态: {'是' if self.is_vip else '否'}, "
-                        f"永久会员: {'是' if self.is_permanent else '否'}, "
-                        f"到期时间: {self.expire_time if self.expire_time else '无'}")
-            
             self.setWindowTitle("微信群成员分析工具")
             self.setGeometry(100, 100, 1000, 600)
             logging.info("窗口基本属性设置完成")
             
             logging.info("初始化 WeChatController...")
             self.wechat = WeChatController()
-            self.wechat.is_vip = self.is_vip  # 设置VIP状态
             self.groups_data = {}
             self.task_dialog = None
             self.worker_thread = None
@@ -265,26 +253,6 @@ class MainWindow(QMainWindow):
             logging.error(traceback.format_exc())
             QMessageBox.critical(None, "错误", f"程序初始化失败：{str(e)}")
             sys.exit(1)
-
-    def check_license(self):
-        """检查注册状态"""
-        try:
-            is_registered, is_vip, is_permanent, expire_time = self.license_manager.is_registered()
-            if not is_registered:
-                dialog = RegisterDialog(self.license_manager)
-                if dialog.exec_() == QDialog.Accepted:
-                    is_registered, is_vip, is_permanent, expire_time = self.license_manager.is_registered()
-                    self.is_registered = is_registered
-                    self.is_vip = is_vip
-                    self.is_permanent = is_permanent
-                    self.expire_time = expire_time
-                    self.wechat.is_vip = is_vip
-                    return True
-                return False
-            return True
-        except Exception as e:
-            logging.error(f"检查注册状态失败: {str(e)}")
-            return False
 
     def init_ui(self):
         """初始化UI界面"""
@@ -403,51 +371,6 @@ class MainWindow(QMainWindow):
             self.setCentralWidget(central_widget)
             main_layout = QVBoxLayout(central_widget)
             main_layout.setContentsMargins(20, 20, 20, 20)
-            
-            # 添加顶部会员信息栏
-            top_bar = QWidget()
-            top_bar.setStyleSheet("""
-                QWidget {
-                    background-color: white;
-                    border-radius: 8px;
-                }
-            """)
-            top_layout = QHBoxLayout(top_bar)
-            top_layout.setContentsMargins(15, 10, 15, 10)
-            
-            # 用户ID显示
-            user_id_label = QLabel(f"用户ID: {self.license_manager.get_user_id()}")
-            user_id_label.setObjectName("user_info")
-            
-            # VIP状态和到期时间
-            self.vip_status_label = QLabel()
-            self.vip_status_label.setObjectName("vip_label")
-            self.expire_time_label = QLabel()
-            self.expire_time_label.setObjectName("expire_label")
-            
-            # 会员按钮
-            self.yearly_vip_button = QPushButton("开通会员")
-            self.yearly_vip_button.setObjectName("vip_button")
-            self.permanent_vip_button = QPushButton("永久会员")
-            self.permanent_vip_button.setObjectName("permanent_button")
-            
-            # 绑定会员按钮点击事件
-            self.yearly_vip_button.clicked.connect(lambda: self.show_register_dialog(is_permanent=False))
-            self.permanent_vip_button.clicked.connect(lambda: self.show_register_dialog(is_permanent=True))
-            
-            # 添加到顶部布局
-            top_layout.addWidget(user_id_label)
-            top_layout.addWidget(self.vip_status_label)
-            top_layout.addWidget(self.expire_time_label)
-            top_layout.addStretch()
-            top_layout.addWidget(self.yearly_vip_button)
-            top_layout.addWidget(self.permanent_vip_button)
-            
-            # 更新会员状态显示
-            self.update_vip_status()
-            
-            # 添加顶部栏到主布局
-            main_layout.addWidget(top_bar)
             
             # 创建水平布局用于左右面板
             content_layout = QHBoxLayout()
@@ -737,16 +660,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "警告", "请先选择要分析的群聊！")
             return
             
-        # 检查非VIP用户的群聊数量限制
-        if not self.is_vip and len(selected_groups) > self.wechat.max_free_groups:
-            QMessageBox.warning(
-                self, 
-                "免费版限制", 
-                f"免费版最多只能同时分析{self.wechat.max_free_groups}个群聊。\n"
-                "升级到VIP版本可以解除此限制！"
-            )
-            return
-            
         # 显示任务执行窗口
         self.task_dialog = TaskPromptDialog(self)
         self.task_dialog.show()
@@ -816,79 +729,36 @@ class MainWindow(QMainWindow):
         # 添加结果到表格
         total_members = len(common_members)
         
-        if not self.is_vip:
-            # 免费版只显示第一个成员
-            if total_members > 0:
-                # 获取第一个成员信息
-                member = list(common_members.keys())[0]
-                groups = list(common_members[member]["groups"])
-                
-                # 添加第一个成员
-                self.result_table.insertRow(0)
-                self.result_table.setItem(0, 0, QTableWidgetItem(member))
-                self.result_table.setItem(0, 1, QTableWidgetItem(str(len(groups))))
-                self.result_table.setItem(0, 2, QTableWidgetItem(", ".join(groups)))
-                
-                # 如果有更多成员，添加提示行
-                if total_members > 1:
-                    self.result_table.insertRow(1)
-                    remaining = total_members - 1
-                    upgrade_item = QTableWidgetItem(f"剩余{remaining}个成员充值会员后可查看")
-                    upgrade_item.setForeground(Qt.blue)
-                    upgrade_item.setFlags(Qt.ItemIsEnabled)  # 设置为不可选中
-                    self.result_table.setItem(1, 0, upgrade_item)
-                    self.result_table.setSpan(1, 0, 1, 3)  # 合并单元格
-        else:
-            # VIP版显示所有成员
-            for row, (member, info) in enumerate(common_members.items()):
-                groups = list(info["groups"])  # 转换set为list
-                self.result_table.insertRow(row)
-                self.result_table.setItem(row, 0, QTableWidgetItem(member))
-                self.result_table.setItem(row, 1, QTableWidgetItem(str(len(groups))))
-                self.result_table.setItem(row, 2, QTableWidgetItem(", ".join(groups)))
+        for row, (member, info) in enumerate(common_members.items()):
+            groups = list(info["groups"])  # 转换set为list
+            self.result_table.insertRow(row)
+            self.result_table.setItem(row, 0, QTableWidgetItem(member))
+            self.result_table.setItem(row, 1, QTableWidgetItem(str(len(groups))))
+            self.result_table.setItem(row, 2, QTableWidgetItem(", ".join(groups)))
         
         # 调整列宽
         self.result_table.resizeColumnsToContents()
         
         # 设置导出按钮状态
-        if not self.is_vip:
-            self.export_button.setEnabled(False)
-            self.export_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #CCCCCC;
-                    color: #666666;
-                    border: none;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #BBBBBB;
-                    cursor: not-allowed;
-                }
-            """)
-            self.export_button.setToolTip("充值VIP会员后可使用导出功能")
-        else:
-            self.export_button.setEnabled(True)
-            self.export_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #4A90E2;
-                    color: white;
-                    border: none;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #357ABD;
-                }
-                QPushButton:pressed {
-                    background-color: #2E6DA4;
-                }
-            """)
-            self.export_button.setToolTip("导出分析结果")
+        self.export_button.setEnabled(True)
+        self.export_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4A90E2;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #357ABD;
+            }
+            QPushButton:pressed {
+                background-color: #2E6DA4;
+            }
+        """)
+        self.export_button.setToolTip("导出分析结果")
 
     def export_results(self):
         """导出分析结果到Excel文件"""
@@ -975,43 +845,16 @@ class MainWindow(QMainWindow):
 
     def update_status_label(self):
         """更新状态标签"""
-        if self.is_vip:
-            self.status_label.setText("VIP用户")
-            self.status_label.setStyleSheet("color: gold; font-weight: bold;")
-        else:
-            self.status_label.setText("免费用户")
-            self.status_label.setStyleSheet("color: gray;") 
+        pass
 
     def update_vip_status(self):
         """更新会员状态显示"""
-        is_registered, is_vip, is_permanent, expire_time = self.license_manager.is_registered()
-        
-        if is_vip:
-            if is_permanent:
-                self.vip_status_label.setText("永久会员")
-                self.expire_time_label.setText("")
-                # 隐藏会员按钮
-                self.yearly_vip_button.hide()
-                self.permanent_vip_button.hide()
-            else:
-                self.vip_status_label.setText("年费会员")
-                self.expire_time_label.setText(f"到期时间: {expire_time}")
-                # 显示永久会员按钮，隐藏年费按钮
-                self.yearly_vip_button.hide()
-                self.permanent_vip_button.show()
-        else:
-            self.vip_status_label.setText("免费用户")
-            self.expire_time_label.setText("")
-            # 显示所有会员按钮
-            self.yearly_vip_button.show()
-            self.permanent_vip_button.show()
-            
+        pass
+
     def show_register_dialog(self, is_permanent=False):
         """显示注册对话框"""
-        dialog = RegisterDialog(self.license_manager, is_permanent)
-        if dialog.exec_() == QDialog.Accepted:
-            # 重新检查注册状态
-            self.is_registered, self.is_vip, is_permanent, expire_time = self.license_manager.is_registered()
-            self.wechat.is_vip = self.is_vip
-            # 更新状态显示
-            self.update_vip_status() 
+        pass
+
+    def show_register_dialog(self, is_permanent=False):
+        """显示注册对话框"""
+        pass 
