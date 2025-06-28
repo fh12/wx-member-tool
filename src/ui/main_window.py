@@ -26,6 +26,7 @@ import sys
 import logging
 import traceback
 from PyQt5.QtGui import QIcon
+import uiautomation as auto
 
 class TaskPromptDialog(QDialog):
     """任务执行提示窗口"""
@@ -157,10 +158,28 @@ class WorkerThread(QThread):
     def run(self):
         """线程执行的主要逻辑"""
         try:
+            # 在线程中初始化 UI 自动化
+            import uiautomation as auto
+            try:
+                # 使用 UIAutomationInitializerInThread 对象初始化 UI 自动化
+                self.ui_automation_initializer = auto.UIAutomationInitializerInThread()
+                print("线程中 UI 自动化初始化成功")
+            except Exception as e:
+                print(f"线程中 UI 自动化初始化失败: {e}")
+            
             if self.task_type == "scan_groups":
                 self._scan_groups()
             elif self.task_type == "analyze_groups":
                 self._analyze_groups()
+                
+            # 在线程结束时释放 UI 自动化资源
+            try:
+                if hasattr(self, 'ui_automation_initializer'):
+                    del self.ui_automation_initializer
+                    print("线程中 UI 自动化资源已释放")
+            except Exception as e:
+                print(f"线程中释放 UI 自动化资源时出错: {e}")
+                
         except Exception as e:
             self.error.emit(str(e))
             

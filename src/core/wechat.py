@@ -17,6 +17,15 @@ class WeChatController:
         self.member_list_window = None
         self.members_data = []
         self.shell = Dispatch("WScript.Shell")  # 创建 Shell 对象
+        
+        # 初始化 UI 自动化
+        try:
+            # 使用 UIAutomationInitializerInThread 对象初始化 UI 自动化
+            self.ui_automation_initializer = auto.UIAutomationInitializerInThread()
+            print("UI 自动化初始化成功")
+        except Exception as e:
+            print(f"UI 自动化初始化失败: {e}")
+            
         self.debug_mode = False  # 添加调试模式标志
         self.is_running = True  # 初始状态设为 True
         
@@ -1122,3 +1131,13 @@ class WeChatController:
         print("\n=== 开始新任务 ===")
         self.is_running = True
         return True 
+
+    def __del__(self):
+        """析构函数，用于释放资源"""
+        try:
+            # 释放 UI 自动化资源
+            if hasattr(self, 'ui_automation_initializer'):
+                del self.ui_automation_initializer
+                print("UI 自动化资源已释放")
+        except Exception as e:
+            print(f"释放 UI 自动化资源时出错: {e}") 
