@@ -809,9 +809,11 @@ class MainWindow(QMainWindow):
             data = []
             for row in range(self.result_table.rowCount()):
                 name = self.result_table.item(row, 0).text()
-                groups = self.result_table.item(row, 1).text()
+                repeat_count = self.result_table.item(row, 1).text()
+                groups = self.result_table.item(row, 2).text()
                 data.append({
                     "昵称": name,
+                    "重复出现次数": repeat_count,
                     "所在群聊": groups
                 })
                 
@@ -828,7 +830,8 @@ class MainWindow(QMainWindow):
                 
                 # 调整列宽
                 worksheet.column_dimensions['A'].width = 30  # 昵称列
-                worksheet.column_dimensions['B'].width = 50  # 群聊列
+                worksheet.column_dimensions['B'].width = 15  # 重复次数列
+                worksheet.column_dimensions['C'].width = 50  # 群聊列
                 
             QMessageBox.information(self, "成功", f"数据已成功导出到：\n{filename}")
             
